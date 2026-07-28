@@ -58,6 +58,25 @@ async function details(id, apiKey) {
   }
 }
 
+// One page of now_playing. Page 2 can legitimately not exist, so a failure is
+// reported rather than thrown and the caller decides whether it matters.
+async function nowPlaying(page, apiKey) {
+  try {
+    const res = await tmdb(
+      `/movie/now_playing?region=US&language=en-US&page=${page}`,
+      apiKey
+    )
+    if (!res.ok) {
+      const body = await res.text()
+      return { ok: false, results: [], detail: body.slice(0, 500) }
+    }
+    const data = await res.json()
+    return { ok: true, results: data.results || [] }
+  } catch (err) {
+    return { ok: false, results: [], detail: String(err) }
+  }
+}
+
 export default async function handler(req, res) {
   const apiKey = process.env.TMDB_API_KEY
   if (!apiKey) {
@@ -66,25 +85,29 @@ export default async function handler(req, res) {
   }
 
   try {
-    const tmdbRes = await tmdb(
-      '/movie/now_playing?region=US&language=en-US',
-      apiKey
-    )
-    if (!tmdbRes.ok) {
-      const body = await tmdbRes.text()
+    const [first, second] = await Promise.all([
+      nowPlaying(1, apiKey),
+      nowPlaying(2, apiKey),
+    ])
+
+    // Page 1 is the deck; page 2 is a bonus, so only page 1 failing is fatal.
+    if (!first.ok) {
       res
         .status(502)
-        .json({ error: 'Upstream TMDB request failed.', detail: body.slice(0, 500) })
+        .json({ error: 'Upstream TMDB request failed.', detail: first.detail })
       return
     }
-    const data = await tmdbRes.json()
 
-    const results = (data.results || [])
+    // Pages shouldn't overlap, but a dupe here would show up as two channels
+    // for the same film.
+    const seen = new Set()
+    const results = [...first.results, ...second.results]
+      .filter((m) => !seen.has(m.id) && seen.add(m.id))
       // Kill limited-release noise: needs a meaningful number of votes.
-      .filter((m) => (m.vote_count ?? 0) >= 50)
+      .filter((m) => (m.vote_count ?? 0) >= 10)
       // Newest first.
       .sort((a, b) => (b.release_date || '').localeCompare(a.release_date || ''))
-      .slice(0, 20)
+      .slice(0, 40)
 
     // Genre list and per-title details in one pass; the edge cache below means
     // this fan-out runs at most a few times a day.
