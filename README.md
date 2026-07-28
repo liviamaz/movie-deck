@@ -1,21 +1,44 @@
 # 🎬 Movie Deck
 
-A single-page app that shows movies currently playing in US theaters as a deck
-of large cards you flip through with the ← / → arrow keys.
+A single-page app that shows movies currently playing in US theaters as a retro
+television console. One film fills the screen at a time; the arrow keys change
+the channel.
 
 Built with **Vite + React**, deployed to **Vercel**. Movie data comes from
 [TMDB](https://www.themoviedb.org/) via a serverless function that keeps the API
 key server-side.
 
+## Controls
+
+| Key | Action |
+| --- | --- |
+| ← / → | Previous / next film (wraps around) |
+| ↑ / ↓ | Previous / next genre |
+
+The channel and genre knobs and the screen edges do the same thing with a mouse.
+
 ## How it works
 
 - `api/movies.js` — Vercel serverless function. Calls TMDB `now_playing`
-  (region US), trims the payload, filters out titles with `vote_count < 50`,
-  sorts by release date descending, and caps at 20. The API key is read from
-  `process.env.TMDB_API_KEY` and never reaches the client.
-- `src/App.jsx` — the deck UI: one poster-forward card at a time, arrow-key and
-  button navigation with wrap-around, a position indicator, adjacent-poster
-  preloading, and loading/error states.
+  (region US), filters out titles with `vote_count < 50`, sorts by release date
+  descending, and caps at 20. It then resolves genre names from
+  `/genre/movie/list` and fetches per-title `runtime` and director/studio
+  credits from `/movie/{id}?append_to_response=credits` — `now_playing` carries
+  none of those. Both enrichment steps degrade to `null` on failure rather than
+  failing the request, and the 6h edge cache means the fan-out runs at most a
+  few times a day. The API key is read from `process.env.TMDB_API_KEY` and never
+  reaches the client.
+- `src/App.jsx` — the console UI, built from the `design/reference.html` mockup.
+  Poster, title, release date, star rating, runtime, and synopsis on a paper
+  screen, with a channel tick strip, working channel/genre knobs, wrap-around
+  navigation, adjacent-poster preloading, and loading/error/empty screens.
+- `src/index.css` — the only global CSS: page background, focus ring, and the
+  channel-roll / static keyframes. Everything else is inline, as in the mockup.
+- Fonts (Jost, Playfair Display, Spectral) load from Google Fonts via
+  `index.html`.
+
+The console is a fixed 1280px wide — the reference design defines no responsive
+behaviour, so narrow viewports scroll horizontally rather than reflow.
 
 ## Local development
 
